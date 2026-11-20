@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f3f6fb">
+<title>城市经营日报</title>
+<link id="app-styles" rel="stylesheet" href="./style.css">
+<script src="./vendor/jszip.min.js" defer></script>
+<script src="./import.js" defer></script>
+<script src="./archive-local.js" defer></script>
+<script src="./actual.js" defer></script>
+<script src="./channels.js" defer></script>
+<script src="./export.js" defer></script>
+<script src="./filters.js" defer></script>
+<script src="./app.js" defer></script>
+</head>
+<body>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-daily" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 16v-4m4 4V8m4 8v-6"/></symbol>
+  <symbol id="i-weekly" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M7.5 3v4m9-4v4m-13 3h17M8 16l2.5-2.5 2.5 1.5 3-3"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2"/><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M10 13h4"/></symbol>
+  <symbol id="i-source" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-date" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M7.5 3v4m9-4v4m-13 3h17"/></symbol>
+  <symbol id="i-lead" viewBox="0 0 24 24"><circle cx="10" cy="8" r="3"/><path d="M4 19v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2m1-14a3 3 0 0 1 0 6m1 3a4 4 0 0 1 2 3v2"/></symbol>
+  <symbol id="i-visit" viewBox="0 0 24 24"><path d="M5 20V9h14v11M3 20h18M4 9l2-5h12l2 5M10 20v-6h4v6"/></symbol>
+  <symbol id="i-drive" viewBox="0 0 24 24"><path d="m5 10 2-5h10l2 5M5 18v2m14-2v2"/><rect x="3" y="10" width="18" height="8" rx="2"/><path d="M7 14h1m8 0h1"/></symbol>
+  <symbol id="i-order" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 5a2 2 0 0 1 3.4 0l6.9 11.5a2 2 0 0 1-1.7 3H5.1a2 2 0 0 1-1.7-3L10.3 5ZM12 9v4m0 3h.01"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 7h16M7 12h10m-7 5h4"/><circle cx="8" cy="7" r="1.6" fill="currentColor"/><circle cx="15" cy="12" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M19 10c0 5-7 10-7 10s-7-5-7-10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 6m2-12v6h-6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-4-4 4 4 4-4M5 16v4h14v-4"/></symbol>
+</svg>
+<div class="shell">
+<aside class="side">
+  <div class="brand"><span class="mark"><svg><use href="#i-logo"/></svg></span><div><strong>城市经营日报</strong><small>门店运营中心</small></div></div>
+  <nav aria-label="报表导航">
+    <div class="nav-label">经营报表</div>
+    <a href="#daily" data-view="daily"><svg><use href="#i-daily"/></svg>经营日报</a>
+    <a href="#weekly" data-view="weekly"><svg><use href="#i-weekly"/></svg>经营周报</a>
+    <a href="#history" data-view="history"><svg><use href="#i-history"/></svg>历史归档</a>
+    <div class="nav-label manage">数据管理</div>
+    <a href="#source" data-view="source"><svg><use href="#i-source"/></svg>数据接入</a>
+  </nav>
+  <div class="side-status"><span class="status-dot"></span><div><strong>城市经营报表</strong><small>苏州 · 深圳 · 重庆 · 武汉</small></div></div>
+</aside>
+<div class="workspace">
+  <header class="topbar"><span id="breadcrumb">经营报表 / 经营日报</span><span class="status-pill">本机归档</span></header>
+  <main>
+    <div class="heading">
+      <div><h1 id="title">经营日报</h1><p id="subtitle"></p></div>
+      <button type="button" class="button export-button" id="download" hidden><svg><use href="#i-download"/></svg><span>导出图片</span></button>
+    </div>
+    <section class="filterbar" id="filters" aria-label="筛选报表">
+      <div class="filter-title"><svg><use href="#i-filter"/></svg>筛选范围</div>
+      <div class="filter-field">
+        <label for="region">大区</label>
+        <div class="filter-picker"><input id="region" type="text" role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off" spellcheck="false"></div>
+      </div>
+      <div class="filter-field">
+        <label for="subregion">小区</label>
+        <div class="filter-picker"><input id="subregion" type="text" role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off" spellcheck="false"></div>
+      </div>
+      <div class="filter-field">
+        <label for="city">城市</label>
+        <div class="filter-picker"><input id="city" type="text" role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off" spellcheck="false"></div>
+      </div>
+      <label id="date-field"><span id="date-label">统计日期</span><input id="date-input" type="date"></label>
+      <button type="button" class="button reset" id="reset">重置</button>
+    </section>
+    <div id="content"></div>
+  </main>
+</div>
+</div>
+<dialog id="diagnosis-dialog" class="diagnosis-dialog" aria-labelledby="diagnosis-editor-title">
+  <form id="diagnosis-form">
+    <h2 id="diagnosis-editor-title">编辑诊断与改善意见</h2>
+    <p class="subtle" id="diagnosis-store"></p>
+    <label>异常标题<input type="text" name="title" maxlength="100" required></label>
+    <label>诊断说明<textarea name="observation" rows="3" maxlength="1000" required></textarea></label>
+    <label>改善动作<textarea name="action" rows="4" maxlength="1000" required></textarea></label>
+    <p class="bad" role="status" id="diagnosis-error"></p>
+    <div class="diagnosis-actions">
+      <button type="button" class="button outline" id="diagnosis-cancel">取消</button>
+      <button type="submit" class="button primary" id="diagnosis-save">保存修改</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
