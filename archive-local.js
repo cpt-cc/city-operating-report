@@ -41,6 +41,13 @@ async function archiveApi(path, payload) {
       edits:edits.result.map(row=>[row.scope,row.key,row.edit]),
     };
   }
+  if (path === 'delete-report' && payload) {
+    const transaction = db.transaction('reports','readwrite');
+    const finished = awaitTransaction(transaction);
+    transaction.objectStore('reports').delete(payload.date);
+    await finished;
+    return {deleted:true};
+  }
   const store = path === 'archive' ? 'reports' : path;
   if (!['reports','diagnoses'].includes(store) || !payload) throw new Error('归档操作有误。');
   if (store === 'diagnoses' && !['title','observation','action'].every(field=>payload.edit?.[field]?.trim())) {

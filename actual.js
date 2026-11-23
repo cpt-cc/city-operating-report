@@ -18,7 +18,7 @@ async function refreshArchive() {
     for (const [date,entry] of reports) actualArchive.set(date,entry);
     diagnosisEdits.clear();
     for (const [scope,key,edit] of edits) rememberDiagnosis(scope,key,edit);
-    if (!actualArchive.has(state.date)) state.date = lastDate();
+    if (!availableDates().includes(state.date)) state.date = lastDate();
     state.archiveStatus = 'ready';
   } catch (error) {
     state.archiveStatus = 'failed';
@@ -59,7 +59,9 @@ async function saveDiagnosisEdit(event) {
   }
 }
 const observationKeys = ['revisitRate','followAverage','responseAverage','callRate'];
-const actualDates = () => [...actualArchive.keys()].sort();
+const weekKey = date => 'week:' + date;
+const actualDates = () => [...actualArchive.keys()].filter(key => !key.startsWith('week:')).sort();
+const availableDates = () => [...actualArchive.keys()].map(key => key.replace(/^week:/,'')).sort();
 const actualOrganizations = () => [...new Map([...actualArchive.values()].flatMap(entry => entry.rows)
   .map(row => [[row.city,row.region,row.subregion].join('|'),{name:row.city,region:row.region,subregion:row.subregion}])).values()];
 
@@ -98,19 +100,25 @@ function actualReport(view) {
   const {start,end,plan} = actualWindow(view);
   const dates = actualDates().filter(date=>date>=start && date<=end);
   const cityNames = matchingCities().map(c=>c.name);
-  const data = actualSeries(start,end,cityNames);
+  const weeklyEntry = view === 'weekly' ? actualArchive.get(weekKey(start)) : null;
+  const data = weeklyEntry ? weeklyEntry.rows.filter(row=>cityNames.includes(row.city) &&
+    (!state.region || row.region === state.region) && (!state.subregion || row.subregion === state.subregion))
+    .map(row=>({...row,date:start})) : actualSeries(start,end,cityNames);
   const isSingleDay = date => actualArchive.get(date)?.period === 'day';
-  const canTotal = view === 'daily' || dates.every(isSingleDay);
+  const canTotal = !!weeklyEntry || view === 'daily' || dates.every(isSingleDay);
   const compareDays = dates.map(date=>shift(date,view==='daily'?-1:-7));
-  const hasComparison = dates.length > 0 && dates.every(isSingleDay) && compareDays.every(isSingleDay);
-  const previous = hasComparison ? compareDays.flatMap(date=>actualSeries(date,date,cityNames)) : [];
+  const previousWeek = weeklyEntry ? actualArchive.get(weekKey(shift(start,-7))) : null;
+  const hasComparison = weeklyEntry ? !!previousWeek : dates.length > 0 && dates.every(isSingleDay) && compareDays.every(isSingleDay);
+  const previous = previousWeek ? previousWeek.rows.filter(row=>cityNames.includes(row.city) &&
+    (!state.region || row.region === state.region) && (!state.subregion || row.subregion === state.subregion)) :
+    hasComparison ? compareDays.flatMap(date=>actualSeries(date,date,cityNames)) : [];
   const byStore = Map.groupBy(data,row=>row.id);
   const beforeStore = Map.groupBy(previous,row=>row.id);
   const detail = Array.from(byStore,([id,rows]) => ({
     ...rows.at(-1), ...actualTotals(rows),
     before:beforeStore.has(id) ? actualTotals(beforeStore.get(id)) : null,
   }));
-  return {view,start,end,plan,data,dates,cityNames,detail,covered:dates.length, sum:actualTotals(data),
+  return {view,start,end,plan,data,dates,cityNames,detail,covered:dates.length, directWeek:!!weeklyEntry, sum:actualTotals(data),
     canTotal,before:hasComparison && previous.length ? actualTotals(previous) : null,
     metrics:actualMetrics()};
 }
@@ -118,7 +126,7 @@ function actualMetadata(report) {
   const matched = new Set(report.data.filter(row=>row.matched).map(row=>row.id)).size;
   const inconsistent = report.data.filter(row=>row.revisitConflict).length;
   const connection = '数据详情匹配 ' + matched + '/' + report.detail.length + ' 家门店';
-  const dates = [...new Set(report.dates.map(date=>actualArchive.get(date).detailDate))];
+  const dates = report.directWeek ? [report.start + ' 至 ' + report.end] : [...new Set(report.dates.map(date=>actualArchive.get(date).detailDate))];
   const detailPeriod = dates.length ? ('数据详情统计日 ' + (dates.length===1 ? dates[0] : dates[0] + ' 至 ' + dates.at(-1))) : '';
   const drill = inconsistent ? ' · ' + inconsistent + ' 条门店日记录的渠道回访率不一致，待确认加权分母' : '';
   return [connection,detailPeriod].filter(Boolean).join(' · ') + drill;
@@ -127,10 +135,12 @@ function actualSourceForm() {
   return '<form id="import-form" class="import-form"><div class="source-grid">' +
     '<label class="source-card"><b>销售转化漏斗分析表</b><small>新增线索、到店、试驾、锁单、线索按时跟进率、试驾24H回访率</small><input name="sales" type="file" accept=".xlsx" required></label>' +
     '<label class="source-card"><b>数据详情</b><small>平均首触响应时长、60s有效通话率、客户平均跟进次数</small><input name="detail" type="file" accept=".xlsx" required></label></div>' +
-    '<div class="import-fields"><label>日报统计日<input type="date" name="date" required></label>' +
-    '<label>数据详情统计日<input type="date" name="detailDate" required></label>' +
-    '<label>漏斗报表统计范围<select name="period"><option value="unknown">累计或尚未确认</option><option value="day">仅统计当日</option></select></label></div>' +
-    '<p class="note">日期以系统导出时所选的统计条件为准。选择「仅统计当日」后，漏斗量才可按日加总生成周报。</p>' +
+    '<div class="import-fields"><label>导入类型<select name="kind" id="import-kind"><option value="daily">日报（单日）</option><option value="weekly">周报（整周）</option></select></label>' +
+    '<label>统计开始日<input type="date" name="date" required></label>' +
+    '<label id="week-end-label" hidden>统计结束日<input type="date" name="endDate"></label>' +
+    '<label id="detail-date-label">数据详情统计日<input type="date" name="detailDate" required></label>' +
+    '<label id="period-label">漏斗报表统计范围<select name="period"><option value="unknown">累计或尚未确认</option><option value="day">仅统计当日</option></select></label></div>' +
+    '<p class="note">导入周报时，两张表须按同一周的周一至周日导出。整周数据独立归档，不与日报重复加总。</p>' +
     '<div class="sync-footer"><button class="button primary" type="submit">导入并查看日报</button>' +
     '<span class="subtle" role="status" id="import-status"></span></div></form>';
 }
@@ -139,18 +149,23 @@ async function importReport(event) {
   const form = event.target;
   const status = $('import-status');
   const submit = form.querySelector('button[type=submit]');
-  const {sales,detail,date,detailDate,period} = Object.fromEntries(new FormData(form));
+  const {sales,detail,date,detailDate,period,kind,endDate} = Object.fromEntries(new FormData(form));
+  if (kind === 'weekly' && (!endDate || shift(date,6) !== endDate || new Date(date+'T00:00:00Z').getUTCDay() !== 1)) {
+    status.textContent = '请选择同一周的周一至周日。'; return;
+  }
   submit.disabled = true;
   status.textContent = '正在读取 Excel 并匹配门店…';
   try {
     const a = await readXlsx(sales,salesColumns,'销售转化漏斗分析表');
     const b = await readXlsx(detail,detailColumns,'数据详情');
     const rows = assembleReport(a,b);
-    const entry = {rows,detailDate,period};
-    await archiveApi('archive',{date,entry});
-    actualArchive.set(date,entry);
+    const entry = {rows,detailDate:kind === 'weekly' ? endDate : detailDate,period:kind === 'weekly' ? 'week' : period,end:kind === 'weekly' ? endDate : date};
+    const key = kind === 'weekly' ? weekKey(date) : date;
+    if (actualArchive.has(key) && !confirm('该日期已有归档，重新导入会覆盖它。确定继续吗？')) { submit.disabled=false; status.textContent='已取消导入。'; return; }
+    await archiveApi('archive',{date:key,entry});
+    actualArchive.set(key,entry);
     Object.assign(state,{date,city:'',region:'',subregion:''});
-    location.hash = 'daily';
+    location.hash = kind === 'weekly' ? 'weekly' : 'daily';
     render();
     notify('已导入 ' + rows.length + ' 家门店，已保存到当前浏览器');
   } catch (error) {

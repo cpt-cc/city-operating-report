@@ -32,8 +32,8 @@ function shift(date, days) {
   result.setUTCDate(result.getUTCDate() + days);
   return result.toISOString().slice(0, 10);
 }
-const lastDate = () => actualDates().at(-1) || '';
-const earliestDate = () => actualDates()[0] || '';
+const lastDate = () => availableDates().at(-1) || '';
+const earliestDate = () => availableDates()[0] || '';
 
 function value(row, metric) {
   if (metric.key) return row[metric.key] ?? null;
@@ -177,7 +177,7 @@ function processTable(r, definitions, averages) {
       return '<td><b class="' + tone + '">' + metricText(metric,v) + '</b></td>';
     }).join('') + '</tr>').join('');
   const foot = cityAverageRows(averages, values => values.map((average, i) => metricText(definitions[i], average)));
-  const method = '门店线索按时跟进率取漏斗分析表 V 列口径，跨渠道或日期按应跟进任务量加权。其余过程项的门店周报暂用有值日期的简单平均。渠道回访率不一致时该门店日显示 —。';
+  const method = r.directWeek ? '本周指标来自两张整周底表；线索按时跟进率按应跟进任务量合并渠道，其他过程指标使用底表中的整周值。渠道回访率不一致时显示 —。' : '门店线索按时跟进率取漏斗分析表 V 列口径，跨渠道或日期按应跟进任务量加权。其余过程项的门店周报暂用有值日期的简单平均。渠道回访率不一致时该门店日显示 —。';
   const legend = '绿色优于同城均值，红色弱于同城均值';
   return panel('门店过程指标',html(actualMetadata(r)) + ' · ' + legend,'',
     '<div class="table-scroll"><table aria-label="门店过程指标"><thead><tr><th>名次</th><th>门店</th>' +
@@ -213,7 +213,7 @@ function diagnoses(r, definitions, averages) {
     const key = JSON.stringify([row.id,metric.key || metric.num]);
     const reading = metricFull(metric,v);
     const comparison = '，' + (metric.lower ? '高于' : '低于') + '同城均值 ' + gapText +
-      change + (r.view === 'weekly' ? ' · ' + misses + '/' + r.covered + ' 天触发' : '');
+      change + (r.view === 'weekly' && !r.directWeek ? ' · ' + misses + '/' + r.covered + ' 天触发' : '');
     const edit = diagnosisEdits.get(scope)?.get(key);
     const content = edit || {title:metric.issue, observation:reading + comparison, action:metric.action};
     visibleDiagnoses.push({scope,key,store,...content});
@@ -231,16 +231,17 @@ function diagnoses(r, definitions, averages) {
 }
 function renderHistory() {
   const cityNames = matchingCities().map(c => c.name);
-  const rows = actualDates().sort().reverse().filter(d => d <= state.date).map(date => {
-    const data = actualSeries(date,date,cityNames);
+  const keys = [...actualArchive.keys()].sort((a,b)=>b.replace(/^week:/,'').localeCompare(a.replace(/^week:/,'')));
+  const rows = keys.filter(key => key.replace(/^week:/,'') <= state.date).map(key => {
+    const weekly = key.startsWith('week:'), date = key.replace(/^week:/,''), entry = actualArchive.get(key);
+    const data = entry.rows.filter(row=>cityNames.includes(row.city) && (!state.region || row.region===state.region) && (!state.subregion || row.subregion===state.subregion));
     if (!data.length) return '';
     const sum = actualTotals(data);
-    return '<tr><td><button class="link" type="button" data-history="' + date + '">' + date + '</button></td><td>' +
-      cityNames.join('、') + '</td><td>' + data.length + ' 家</td><td>' + number(sum.leads) + '</td><td>' + number(sum.orders) + '</td><td><button class="link" type="button" data-history="' + date + '">查看日报</button></td></tr>';
+    return '<tr><td>' + html(weekly ? date + ' 至 ' + entry.end : date) + '</td><td>' + (weekly ? '周报' : '日报') + '</td><td>' + data.length + ' 家</td><td>' + number(sum.leads) + '</td><td>' + number(sum.orders) + '</td><td><button class="link" type="button" data-history-key="' + html(key) + '">查看</button>　<button class="link" type="button" data-delete-key="' + html(key) + '">删除</button></td></tr>';
   }).join('');
-  if (!rows) return panel('已归档日报','','','<div class="empty">当前筛选范围内没有归档。</div>');
-  return panel('已归档日报','按日期倒序排列，点击日期打开日报','',
-    '<div class="table-scroll"><table class="history-table" aria-label="归档日报"><thead><tr><th>统计日期</th><th>城市</th><th>覆盖门店</th><th>线索</th><th>锁单</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>');
+  if (!rows) return panel('已归档报表','','','<div class="empty">当前筛选范围内没有归档。</div>');
+  return panel('已归档报表','删除会移除当前浏览器中该报表的所有城市数据。','',
+    '<div class="table-scroll"><table class="history-table" aria-label="归档报表"><thead><tr><th>统计范围</th><th>类型</th><th>覆盖门店</th><th>线索</th><th>锁单</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>');
 }
 function renderSource() {
   return panel('导入两份底表','四城门店指标保存在当前浏览器。慢闪店按底表的「渠道类型」剔除。','',
@@ -290,7 +291,7 @@ function render() {
     }
     const r = actualReport(view);
     $('subtitle').textContent = dateRange(r.start,r.end) + '　·　' + r.detail.length + ' 家门店' +
-      (view === 'weekly' ? '　·　已归档 ' + r.covered + '/7 天' : '');
+      (view === 'weekly' ? (r.directWeek ? '　·　整周导入' : '　·　已归档 ' + r.covered + '/7 天') : '');
     if (!r.detail.length || !r.canTotal) {
       $('content').innerHTML = !r.detail.length ?
         panel('经营数据','','','<div class="empty">当前范围暂无归档数据，请切换日期或城市。</div>') :
@@ -301,11 +302,11 @@ function render() {
     const definitions = r.metrics;
     const averages = cityProcessAverages(r.detail, definitions);
     const channels = view === 'weekly' ? renderChannelFunnel(r) : '';
-    $('content').innerHTML = kpis(r) + '<div class="overview">' + trend(r) + funnel(r) + '</div>' +
+    $('content').innerHTML = kpis(r) + '<div class="overview">' + (r.directWeek ? panel('本周每日趋势','整周底表没有每日拆分','','<div class="empty">暂无每日趋势</div>') : trend(r)) + funnel(r) + '</div>' +
       '<div id="report-sections" class="report-sections">' + conversionTable(r) + channels +
       processTable(r, definitions, averages) + diagnoses(r, definitions, averages) + '</div>';
   } else {
-    $('subtitle').textContent = view === 'history' ? '按组织范围和日期查找已保存的日报' : '两份报表统一取数、匹配门店并保存每日快照';
+    $('subtitle').textContent = view === 'history' ? '按组织范围和日期查找已保存的报表' : '导入日报或整周底表并保存在当前浏览器';
     $('content').innerHTML = view === 'history' ? renderHistory() : renderSource();
   }
 }
@@ -316,6 +317,13 @@ function notify(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4500);
 }
+$('content').addEventListener('change',event => {
+  if (event.target.id !== 'import-kind') return;
+  const weekly = event.target.value === 'weekly', form = event.target.form;
+  form.elements.endDate.required = weekly; form.elements.detailDate.required = !weekly;
+  $('week-end-label').hidden = !weekly; $('detail-date-label').hidden = weekly; $('period-label').hidden = weekly;
+  form.querySelector('button[type=submit]').textContent = weekly ? '导入并查看周报' : '导入并查看日报';
+});
 $('content').addEventListener('submit',event => {
   if (event.target.id === 'import-form') importReport(event);
 });
@@ -330,7 +338,9 @@ const organizationPickers = Object.fromEntries(
 );
 $('date-input').addEventListener('change', event => {
   const choice = event.target.value;
-  if (actualArchive.has(choice)) state.date = choice;
+  const day = new Date(choice+'T00:00:00Z').getUTCDay();
+  const monday = choice ? shift(choice,-((day+6)%7)) : '';
+  if (actualArchive.has(choice) || (currentView() === 'weekly' && actualArchive.has(weekKey(monday)))) state.date = choice;
   else notify('该日期暂无归档，请选择已有数据的日期');
   render();
 });
@@ -348,6 +358,18 @@ $('content').addEventListener('click', event => {
     state.trend = button.dataset.trend;
     render();
     document.querySelector('[data-trend="' + state.trend + '"]').focus();
+  }
+  if (button.dataset.deleteKey) {
+    const key = button.dataset.deleteKey;
+    if (confirm('确定删除这份归档吗？当前浏览器内该报表的所有城市数据将被删除，无法撤销。')) {
+      archiveApi('delete-report',{date:key}).then(()=>{ actualArchive.delete(key); state.date=lastDate(); render(); notify('归档已删除'); }).catch(()=>notify('删除失败，请重试'));
+    }
+  }
+  if (button.dataset.historyKey) {
+    const key = button.dataset.historyKey;
+    state.date = key.replace(/^week:/,'');
+    location.hash = key.startsWith('week:') ? 'weekly' : 'daily';
+    render(); window.scrollTo(0,0);
   }
   if (button.dataset.history) {
     state.date = button.dataset.history;
