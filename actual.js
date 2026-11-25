@@ -1,6 +1,15 @@
 'use strict';
 
 const actualArchive = new Map();
+const selectedStores = new Set([
+  '重庆东风南方盛泰','重庆东风南方西南汽贸城','重庆东风南方海峡','重庆东风南方渝发','重庆东风南方渝兴','重庆东风南方渝东','重庆东风南方茶园','涪陵文化','重庆东新','万州飞骏',
+  '苏州伟海','苏州相诚','苏州风顺','太仓诚茂','吴江连诚','昆山华明','昆山昆众中华园路','苏州诚邦松陵','昆山纽安捷',
+  '深圳东风南方华新','深圳东风南方华翔','深圳里程福田','深圳东风南方观澜华盛','深圳东风南方华景','深圳金源','深圳东风南方华瑞福田','深圳里程','深圳新大兴','深圳东风南方华龙','深圳东风南方华昌'
+]);
+const selectedChongqingCodes = new Set(['J0416','J0413','J0415','J0407','J0402','J0408','J0417','J0412','J0435','J0437']);
+const selectedStore = row => selectedStores.has(String(row.name || '').normalize('NFKC').trim()) ||
+  (row.city === '重庆' && selectedChongqingCodes.has(String(row.code || row.id || '').toUpperCase().trim()));
+const visibleEntry = entry => ({...entry, rows:entry.rows.filter(selectedStore)});
 const diagnosisEdits = new Map();
 let visibleDiagnoses = [];
 let activeDiagnosis;
@@ -15,13 +24,14 @@ async function refreshArchive() {
   try {
     const {reports,edits} = await archiveApi('archive');
     actualArchive.clear();
-    for (const [date,entry] of reports) actualArchive.set(date,entry);
+    for (const [date,entry] of reports) actualArchive.set(date,visibleEntry(entry));
     diagnosisEdits.clear();
     for (const [scope,key,edit] of edits) rememberDiagnosis(scope,key,edit);
     if (!availableDates().includes(state.date)) state.date = lastDate();
     state.archiveStatus = 'ready';
   } catch (error) {
     state.archiveStatus = 'failed';
+    state.archiveError = error.message || '未知错误';
   }
   render();
 }
@@ -163,11 +173,11 @@ async function importReport(event) {
     const key = kind === 'weekly' ? weekKey(date) : date;
     if (actualArchive.has(key) && !confirm('该日期已有归档，重新导入会覆盖它。确定继续吗？')) { submit.disabled=false; status.textContent='已取消导入。'; return; }
     await archiveApi('archive',{date:key,entry});
-    actualArchive.set(key,entry);
+    actualArchive.set(key,visibleEntry(entry));
     Object.assign(state,{date,city:'',region:'',subregion:''});
     location.hash = kind === 'weekly' ? 'weekly' : 'daily';
     render();
-    notify('已导入 ' + rows.length + ' 家门店，已保存到当前浏览器');
+    notify('已导入 ' + rows.filter(selectedStore).length + ' 家指定门店，已保存到共享归档');
   } catch (error) {
     status.textContent = error.message || '读取失败，请核对文件格式。';
     submit.disabled = false;

@@ -140,6 +140,22 @@ function conversionTable(r) {
     '<th scope="col">名次</th><th scope="col">门店</th>' + headings +
     '</tr></thead><tbody>' + body + '</tbody><tfoot>' + foot + '</tfoot></table></div>');
 }
+function monthToDateTable(r) {
+  const start = r.start.slice(0, 8) + '01';
+  const days = [];
+  for (let d = start; d <= r.start; d = shift(d, 1)) days.push(d);
+  const missing = days.filter(d => actualArchive.get(d)?.period !== 'day');
+  if (missing.length) return panel('本月累计门店数据', start + ' 至 ' + r.start, '',
+    '<div class="empty">缺少 ' + missing.length + ' 天已确认的单日数据，暂无法计算完整月累计。请导入本月每天的单日底表。</div>');
+  const grouped = Map.groupBy(actualSeries(start, r.start, r.cityNames), row => row.id);
+  const rows = Array.from(grouped.values(), items => ({...items.at(-1), ...actualTotals(items)}))
+    .sort((a,b)=>b.orders-a.orders || b.leads-a.leads || compareId(a,b));
+  const body = rows.map((row,i)=>'<tr><td>'+rank(i)+'</td><td><b>'+html(row.name)+(r.cityNames.length>1?' · '+html(row.city):'')+'</b></td>'+
+    stages.map(stage=>'<td><b>'+number(row[stage.key])+'</b></td>').join('')+'</tr>').join('');
+  return panel('本月累计门店数据', start + ' 至 ' + r.start + ' · 按锁单数排序',
+    '<span class="subtle">'+rows.length+' 家门店</span>', '<div class="table-scroll"><table class="conversion-table"><thead><tr><th>名次</th><th>门店</th>'+
+    stages.map(stage=>'<th>'+stage.name+'</th>').join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>');
+}
 function cityProcessAverages(rows, definitions) {
   return new Map(Array.from(Map.groupBy(rows, row => row.city), ([city, stores]) => [
     city, definitions.map(metric => {
@@ -219,8 +235,7 @@ function diagnoses(r, definitions, averages) {
     visibleDiagnoses.push({scope,key,store,...content});
     return '<article class="diagnosis ' + (severity < .35 ? 'warning' : '') + '"><div class="diagnosis-top"><div>' +
       '<span class="label">' + severityLabel + '</span><span class="issue-store">' + html(store) +
-      '</span></div><button type="button" class="diagnosis-edit link" data-export-control data-diagnosis="' + index +
-      '" aria-label="' + html('编辑' + store + ' · ' + content.title) + '">编辑</button></div><h3>' + html(content.title) +
+      '</span></div></div><h3>' + html(content.title) +
       '</h3><p class="diagnosis-copy">' + (edit ? html(content.observation) : '<b>' + html(reading) + '</b>' + html(comparison)) +
       '</p><p class="diagnosis-copy"><b>改善动作</b>　' + html(content.action) + '</p></article>';
   }).join('');
@@ -237,26 +252,26 @@ function renderHistory() {
     const data = entry.rows.filter(row=>cityNames.includes(row.city) && (!state.region || row.region===state.region) && (!state.subregion || row.subregion===state.subregion));
     if (!data.length) return '';
     const sum = actualTotals(data);
-    return '<tr><td>' + html(weekly ? date + ' 至 ' + entry.end : date) + '</td><td>' + (weekly ? '周报' : '日报') + '</td><td>' + data.length + ' 家</td><td>' + number(sum.leads) + '</td><td>' + number(sum.orders) + '</td><td><button class="link" type="button" data-history-key="' + html(key) + '">查看</button>　<button class="link" type="button" data-delete-key="' + html(key) + '">删除</button></td></tr>';
+    return '<tr><td>' + html(weekly ? date + ' 至 ' + entry.end : date) + '</td><td>' + (weekly ? '周报' : '日报') + '</td><td>' + data.length + ' 家</td><td>' + number(sum.leads) + '</td><td>' + number(sum.orders) + '</td><td><button class="link" type="button" data-history-key="' + html(key) + '">查看</button></td></tr>';
   }).join('');
   if (!rows) return panel('已归档报表','','','<div class="empty">当前筛选范围内没有归档。</div>');
-  return panel('已归档报表','删除会移除当前浏览器中该报表的所有城市数据。','',
+  return panel('已归档报表','公开共享报表；所有人都可以导入数据。','',
     '<div class="table-scroll"><table class="history-table" aria-label="归档报表"><thead><tr><th>统计范围</th><th>类型</th><th>覆盖门店</th><th>线索</th><th>锁单</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>');
 }
 function renderSource() {
-  return panel('导入两份底表','四城门店指标保存在当前浏览器。慢闪店按底表的「渠道类型」剔除。','',
+  return panel('导入两份底表','导入后所有访问者都可查看。慢闪店按「渠道类型」剔除。','',
     actualSourceForm());
 }
 function currentView() {
   const view = location.hash.slice(1);
-  return Object.hasOwn(intakeLabels,view) ? view : 'daily';
+  return ['daily','weekly','history','source'].includes(view) ? view : 'weekly';
 }
 function render() {
   const view = currentView();
   const shownCities = matchingCities();
   const organizations = actualOrganizations();
   visibleDiagnoses = [];
-  const name = state.city || (shownCities.length === 1 ? shownCities[0].name : '四城');
+  const name = state.city || (shownCities.length === 1 ? shownCities[0].name : '三城');
   const isReport = view === 'daily' || view === 'weekly';
   document.querySelectorAll('[data-view]').forEach(link => {
     if (link.dataset.view === view) link.setAttribute('aria-current','page');
@@ -275,18 +290,18 @@ function render() {
   $('date-input').value = state.date;
   if (state.archiveStatus === 'loading') {
     $('subtitle').textContent = '';
-    $('content').innerHTML = panel('正在读取本机归档','','','');
+    $('content').innerHTML = panel('正在读取共享归档','','','');
     return;
   }
   if (state.archiveStatus === 'failed') {
     $('subtitle').textContent = '';
-    $('content').innerHTML = panel('暂时无法读取本机归档','','','<button type="button" class="button outline" id="retry-archive">重试</button>');
+    $('content').innerHTML = panel('暂时无法读取公开数据','','','<p>' + html(state.archiveError || '请检查数据清单和底表。') + '</p><button type="button" class="button outline" id="retry-archive">重试</button>');
     return;
   }
   if (isReport) {
     if (!state.date) {
       $('subtitle').textContent = '';
-      $('content').innerHTML = panel('暂无经营数据','','','<div class="empty">请前往<a class="link" href="#source">数据接入</a>导入两份底表。</div>');
+      $('content').innerHTML = panel('暂无经营数据','','','<div class="empty">此日期暂无报表。</div>');
       return;
     }
     const r = actualReport(view);
@@ -303,10 +318,10 @@ function render() {
     const averages = cityProcessAverages(r.detail, definitions);
     const channels = view === 'weekly' ? renderChannelFunnel(r) : '';
     $('content').innerHTML = kpis(r) + '<div class="overview">' + (r.directWeek ? panel('本周每日趋势','整周底表没有每日拆分','','<div class="empty">暂无每日趋势</div>') : trend(r)) + funnel(r) + '</div>' +
-      '<div id="report-sections" class="report-sections">' + conversionTable(r) + channels +
+      '<div id="report-sections" class="report-sections">' + conversionTable(r) + (view === 'daily' ? monthToDateTable(r) : '') + channels +
       processTable(r, definitions, averages) + diagnoses(r, definitions, averages) + '</div>';
   } else {
-    $('subtitle').textContent = view === 'history' ? '按组织范围和日期查找已保存的报表' : '导入日报或整周底表并保存在当前浏览器';
+    $('subtitle').textContent = view === 'history' ? '按组织范围和日期查找已保存的报表' : '导入日报或整周底表并保存在公开共享归档';
     $('content').innerHTML = view === 'history' ? renderHistory() : renderSource();
   }
 }
@@ -361,7 +376,7 @@ $('content').addEventListener('click', event => {
   }
   if (button.dataset.deleteKey) {
     const key = button.dataset.deleteKey;
-    if (confirm('确定删除这份归档吗？当前浏览器内该报表的所有城市数据将被删除，无法撤销。')) {
+    if (confirm('确定删除这份归档吗？共享报表的所有城市数据将被删除，无法撤销。')) {
       archiveApi('delete-report',{date:key}).then(()=>{ actualArchive.delete(key); state.date=lastDate(); render(); notify('归档已删除'); }).catch(()=>notify('删除失败，请重试'));
     }
   }
