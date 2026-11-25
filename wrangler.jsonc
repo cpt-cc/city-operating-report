@@ -1,5 +1,6 @@
 {
   "name": "city-operating-report",
   "main": "worker.mjs",
-  "compatibility_date": "2026-11-25"
+  "compatibility_date": "2026-11-25",
+  "previews": {}
 }
