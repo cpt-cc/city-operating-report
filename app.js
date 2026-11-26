@@ -235,7 +235,7 @@ function diagnoses(r, definitions, averages) {
     visibleDiagnoses.push({scope,key,store,...content});
     return '<article class="diagnosis ' + (severity < .35 ? 'warning' : '') + '"><div class="diagnosis-top"><div>' +
       '<span class="label">' + severityLabel + '</span><span class="issue-store">' + html(store) +
-      '</span></div></div><h3>' + html(content.title) +
+      '</span></div><button type="button" class="diagnosis-edit link" data-export-control data-diagnosis="' + index + '">编辑</button></div><h3>' + html(content.title) +
       '</h3><p class="diagnosis-copy">' + (edit ? html(content.observation) : '<b>' + html(reading) + '</b>' + html(comparison)) +
       '</p><p class="diagnosis-copy"><b>改善动作</b>　' + html(content.action) + '</p></article>';
   }).join('');
@@ -252,7 +252,7 @@ function renderHistory() {
     const data = entry.rows.filter(row=>cityNames.includes(row.city) && (!state.region || row.region===state.region) && (!state.subregion || row.subregion===state.subregion));
     if (!data.length) return '';
     const sum = actualTotals(data);
-    return '<tr><td>' + html(weekly ? date + ' 至 ' + entry.end : date) + '</td><td>' + (weekly ? '周报' : '日报') + '</td><td>' + data.length + ' 家</td><td>' + number(sum.leads) + '</td><td>' + number(sum.orders) + '</td><td><button class="link" type="button" data-history-key="' + html(key) + '">查看</button></td></tr>';
+    return '<tr><td>' + html(weekly ? date + ' 至 ' + entry.end : date) + '</td><td>' + (weekly ? '周报' : '日报') + '</td><td>' + data.length + ' 家</td><td>' + number(sum.leads) + '</td><td>' + number(sum.orders) + '</td><td><button class="link" type="button" data-history-key="' + html(key) + '">查看</button>　<button class="link" type="button" data-delete-key="' + html(key) + '">删除</button></td></tr>';
   }).join('');
   if (!rows) return panel('已归档报表','','','<div class="empty">当前筛选范围内没有归档。</div>');
   return panel('已归档报表','公开共享报表；所有人都可以导入数据。','',
@@ -366,7 +366,7 @@ $('reset').addEventListener('click', () => {
   render();
 });
 $('download').addEventListener('click', exportReportImage);
-$('content').addEventListener('click', event => {
+$('content').addEventListener('click', async event => {
   const button = event.target.closest('button');
   if (!button) return;
   if (button.id === 'retry-archive') refreshArchive();
@@ -378,9 +378,12 @@ $('content').addEventListener('click', event => {
   }
   if (button.dataset.deleteKey) {
     const key = button.dataset.deleteKey;
-    if (confirm('确定删除这份归档吗？共享报表的所有城市数据将被删除，无法撤销。')) {
-      archiveApi('delete-report',{date:key}).then(()=>{ actualArchive.delete(key); state.date=lastDate(); render(); notify('归档已删除'); }).catch(()=>notify('删除失败，请重试'));
-    }
+    if (!confirm('确定删除这份归档吗？所有城市的数据都会从共享看板中移除。')) return;
+    const password = await requestAdminPassword('删除归档');
+    if (password === null) return;
+    button.disabled = true;
+    try { await archiveApi('delete-report',{date:key,password}); actualArchive.delete(key); state.date=lastDate(); await refreshArchive(); notify('归档已从共享看板移除'); }
+    catch (error) { notify(error.message || '删除失败，请重试'); button.disabled = false; }
   }
   if (button.dataset.historyKey) {
     const key = button.dataset.historyKey;

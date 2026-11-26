@@ -9,12 +9,12 @@
 <script src="./vendor/jszip.min.js" defer></script>
 <script src="./import.js" defer></script>
 <script src="./shared-config.js" defer></script>
-<script src="./archive-local.js?v=20261126b" defer></script>
-<script src="./actual.js?v=20261126b" defer></script>
+<script src="./archive-local.js?v=20261126c" defer></script>
+<script src="./actual.js?v=20261126c" defer></script>
 <script src="./channels.js" defer></script>
 <script src="./export.js" defer></script>
 <script src="./filters.js" defer></script>
-<script src="./app.js?v=20261126b" defer></script>
+<script src="./app.js?v=20261126c" defer></script>
 </head>
 <body>
 <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -88,6 +88,14 @@
       <button type="button" class="button outline" id="diagnosis-cancel">取消</button>
       <button type="submit" class="button primary" id="diagnosis-save">保存修改</button>
     </div>
+  </form>
+</dialog>
+<dialog id="admin-dialog" class="diagnosis-dialog" aria-labelledby="admin-title">
+  <form id="admin-form">
+    <h2 id="admin-title">管理员验证</h2>
+    <p>请输入管理员密码以<span id="admin-action"></span>。</p>
+    <label>管理员密码<input id="admin-password" type="password" autocomplete="current-password" maxlength="256" required></label>
+    <div class="diagnosis-actions"><button id="admin-cancel" type="button" class="button outline">取消</button><button type="submit" class="button primary">确认</button></div>
   </form>
 </dialog>
 <div id="toast" class="toast" role="status" hidden></div>

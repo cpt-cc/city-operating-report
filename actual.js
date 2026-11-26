@@ -14,6 +14,28 @@ const diagnosisEdits = new Map();
 let visibleDiagnoses = [];
 let activeDiagnosis;
 
+function requestAdminPassword(action) {
+  const dialog = $('admin-dialog'), form = $('admin-form'), input = $('admin-password');
+  $('admin-action').textContent = action;
+  input.value = '';
+  return new Promise(resolve => {
+    function finish(value) {
+      form.removeEventListener('submit', submit);
+      dialog.removeEventListener('cancel', cancel);
+      $('admin-cancel').removeEventListener('click', cancel);
+      input.value = '';
+      if (dialog.open) dialog.close();
+      resolve(value);
+    }
+    function submit(event) { event.preventDefault(); finish(input.value); }
+    function cancel(event) { event.preventDefault(); finish(null); }
+    form.addEventListener('submit', submit);
+    dialog.addEventListener('cancel', cancel);
+    $('admin-cancel').addEventListener('click', cancel);
+    dialog.showModal(); input.focus();
+  });
+}
+
 function rememberDiagnosis(scope,key,edit) {
   if (!diagnosisEdits.has(scope)) diagnosisEdits.set(scope,new Map());
   diagnosisEdits.get(scope).set(key,edit);
@@ -173,7 +195,9 @@ async function importReport(event) {
     const entry = {rows,detailDate:kind === 'weekly' ? endDate : detailDate,period:kind === 'weekly' ? 'week' : period,end:kind === 'weekly' ? endDate : date};
     const key = kind === 'weekly' ? weekKey(date) : date;
     if (actualArchive.has(key) && !confirm('该日期已有归档，重新导入会覆盖它。确定继续吗？')) { submit.disabled=false; status.textContent='已取消导入。'; return; }
-    await archiveApi('archive',{date:key,entry});
+    const password = await requestAdminPassword('导入报表');
+    if (password === null) { submit.disabled=false; status.textContent='已取消导入。'; return; }
+    await archiveApi('archive',{date:key,entry,password});
     actualArchive.set(key,visibleEntry(entry));
     Object.assign(state,{date,city:'',region:'',subregion:''});
     location.hash = kind === 'weekly' ? 'weekly' : 'daily';
