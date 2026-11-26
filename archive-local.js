@@ -14,6 +14,23 @@ async function fetchJson(url, options, timeoutMs, timeoutMessage) {
   } finally { clearTimeout(timer); }
 }
 
+async function readGithubArchive() {
+  const base = 'https://api.github.com/repos/cpt-cc/city-operating-report/contents/archives';
+  const files = await fetchJson(base + '?ref=main', {cache:'no-store'}, 10000, 'GitHub 归档列表读取超时。');
+  if (!Array.isArray(files) || files.length >= 1000) throw new Error('GitHub 归档列表不完整。');
+  const names = files.filter(file => file.type === 'file' && /^(week|day)-\d{4}-\d{2}-\d{2}\.json$/.test(file.name)).map(file => file.name);
+  const reports = await Promise.all(names.map(async name => {
+    const file = await fetchJson(base + '/' + name + '?ref=main', {cache:'no-store'}, 10000, 'GitHub 归档读取超时。');
+    if (typeof file.content !== 'string' || file.encoding !== 'base64') throw new Error('GitHub 归档格式有误。');
+    const bytes = Uint8Array.from(atob(file.content.replace(/\s/g,'')), ch => ch.charCodeAt(0));
+    const record = JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+    const expected = name.startsWith('week-') ? 'week:' + name.slice(5,-5) : name.slice(4,-5);
+    if (record.date !== expected || !Array.isArray(record.entry?.rows)) throw new Error('GitHub 归档格式有误。');
+    return [record.date, record.entry];
+  }));
+  return {reports};
+}
+
 async function archiveApi(path, payload) {
   if (path !== 'archive') throw new Error('该操作不可用。');
   if (payload) {
@@ -22,12 +39,17 @@ async function archiveApi(path, payload) {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), cache:'no-store'
     }, 30000, '保存超时，结果尚未确认；请刷新历史归档核对后再重试。');
   }
-  const requests = [fetchJson('./history.json', {cache:'no-cache'}, 15000, '历史数据读取超时，请检查网络后重试。')];
-  if (SHARED_API_BASE) requests.push(fetchJson(SHARED_API_BASE + '/archive', {cache:'no-store'}, 15000,
-    '共享归档连接超时，请检查网络后重试。'));
-  const [history, remote = {reports:[]}] = await Promise.all(requests);
-  if (!Array.isArray(history.reports) || !Array.isArray(remote.reports)) throw new Error('报表数据格式有误。');
+  const historyPromise = fetchJson('./history.json', {cache:'no-cache'}, 15000, '历史数据读取超时，请检查网络后重试。');
+  const remotePromise = SHARED_API_BASE ? Promise.any([
+    fetchJson(SHARED_API_BASE + '/archive', {cache:'no-store'}, 10000, '共享归档连接超时。').then(data => {
+      if (!Array.isArray(data.reports)) throw new Error('共享归档格式有误。');
+      return {reports:data.reports, warning:''};
+    }),
+    readGithubArchive().then(data => ({...data, warning:'当前通过 GitHub 读取共享数据；导入仍需要连接共享服务，如保存失败请检查网络。'}))
+  ]).catch(() => ({reports:[], warning:'共享归档暂时无法连接，当前只显示历史快照，可能不是最新数据；导入可能不可用。请检查网络后重试。'})) : Promise.resolve({reports:[], warning:'共享服务未配置，当前只显示历史快照，可能不是最新数据。'});
+  const [history, remote] = await Promise.all([historyPromise, remotePromise]);
+  if (!Array.isArray(history.reports)) throw new Error('历史数据格式有误。');
   const merged = new Map(history.reports);
   for (const [key,entry] of remote.reports) merged.set(key,entry);
-  return {reports:[...merged], edits:[]};
+  return {reports:[...merged], edits:[], warning:remote.warning};
 }

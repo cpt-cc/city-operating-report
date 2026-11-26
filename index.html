@@ -9,12 +9,12 @@
 <script src="./vendor/jszip.min.js" defer></script>
 <script src="./import.js" defer></script>
 <script src="./shared-config.js" defer></script>
-<script src="./archive-local.js?v=20261126" defer></script>
-<script src="./actual.js" defer></script>
+<script src="./archive-local.js?v=20261126b" defer></script>
+<script src="./actual.js?v=20261126b" defer></script>
 <script src="./channels.js" defer></script>
 <script src="./export.js" defer></script>
 <script src="./filters.js" defer></script>
-<script src="./app.js" defer></script>
+<script src="./app.js?v=20261126b" defer></script>
 </head>
 <body>
 <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -71,6 +71,7 @@
       <label id="date-field"><span id="date-label">统计日期</span><input id="date-input" type="date"></label>
       <button type="button" class="button reset" id="reset">重置</button>
     </section>
+    <div id="archive-warning" role="status" hidden style="padding:12px 16px;margin:0 0 16px;background:#fff4da;color:#714500;border:1px solid #e5c780;border-radius:8px"></div>
     <div id="content"></div>
   </main>
 </div>

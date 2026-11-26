@@ -281,6 +281,8 @@ function render() {
   $('title').textContent = isReport ? name + intakeLabels[view] : intakeLabels[view];
   $('filters').hidden = view === 'source' || !actualArchive.size;
   $('download').hidden = true;
+  $('archive-warning').hidden = !state.archiveWarning || state.archiveStatus !== 'ready';
+  $('archive-warning').textContent = state.archiveWarning || '';
   organizationPickers.region([...new Set(organizations.map(c => c.region))], state.region);
   organizationPickers.subregion([...new Set(organizations.filter(c => !state.region || c.region === state.region).map(c => c.subregion))], state.subregion);
   organizationPickers.city([...new Set(organizations.filter(c => (!state.region || c.region === state.region) && (!state.subregion || c.subregion === state.subregion)).map(c => c.name))], state.city);

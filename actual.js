@@ -22,7 +22,8 @@ async function refreshArchive() {
   state.archiveStatus = 'loading';
   render();
   try {
-    const {reports,edits} = await archiveApi('archive');
+    const {reports,edits,warning} = await archiveApi('archive');
+    state.archiveWarning = warning || '';
     actualArchive.clear();
     for (const [date,entry] of reports) actualArchive.set(date,visibleEntry(entry));
     diagnosisEdits.clear();
